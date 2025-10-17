@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 
 # ------------------------------------------------------------
-# Il Mostro 5.0 - v6 NO EXPORT (FIXED SYNTAX)
+# Il Mostro 5.0 - v6 NO EXPORT (Minimal Header + Mobile Fix)
 # ------------------------------------------------------------
 
 # CONFIG
@@ -20,8 +20,6 @@ st.set_page_config(page_title="Il Mostro 5.0 - Solo UI", page_icon="🤖⚽", la
 # -------------------------
 # CSS (Blocco sintatticamente sicuro)
 # -------------------------
-# NOTA: Spostare il blocco di codice CSS/HTML all'inizio evita conflitti
-# di indentation con le funzioni che seguono e la chiamata main().
 st.markdown("""
 <style>
 /* Base Theme */
@@ -35,7 +33,8 @@ body { background-color: #f8fafc; }
     border-bottom: 3px solid #0b3d91;
     margin-bottom: 20px;
 }
-.small-muted { color: #6b7280; font-size: 1.1rem; text-align: center; margin-bottom: 30px;}
+/* La classe .small-muted non viene più usata, ma la teniamo nel CSS */
+.small-muted { color: #6b7280; font-size: 1.1rem; text-align: center; margin-bottom: 30px;} 
 .stButton>button { 
     border-radius: 8px; 
     font-weight: bold;
@@ -56,11 +55,13 @@ body { background-color: #f8fafc; }
     box-shadow: 0 10px 30px rgba(11,61,145,0.1); 
     margin-bottom: 30px; 
 }
+/* Le metriche nel card (su mobile) ora vanno in colonna */
 .stMetric {
     background-color: white;
     padding: 15px;
     border-radius: 10px;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.05); /* Qui avveniva l'errore di sintassi */
+    box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+    margin-bottom: 10px; /* Aggiunto spazio per separare le metriche in colonna */
 }
 /* Player row styling for exclusion */
 .player-row-container {
@@ -229,10 +230,10 @@ def exclude_player(player_name):
 # -------------------------
 
 def main():
-    # Intestazione richiesta dall'utente
+    # Intestazione minimal
     st.markdown('<div class="main-header">Il Mostro 5.0 ⚽</div>', unsafe_allow_html=True)
-    st.markdown('***')
-    
+    st.markdown('***') 
+
     # Inizializzazione stato
     state_defaults = {
         'combined_results': pd.DataFrame(), 'home_team': '', 'away_team': '', 
@@ -331,13 +332,16 @@ def main():
         # 3. Visualizzazione Risultati
         st.subheader('3. Risultati e Top 4 Consigliati ✨')
         
-        # Summary Card
+        # Summary Card (MODIFICATA PER IL MOBILE)
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown(f"**{st.session_state['home_team']} vs {st.session_state['away_team']}** — Arbitro: **{ref_name}** ({ref_cat})", unsafe_allow_html=True)
-        c1, c2, c3 = st.columns([1,1,1])
-        c1.metric('Stima Totale Gialli', f"{est_total:.2f}")
-        c2.metric(f'Quota Rischio {st.session_state['home_team']}', f"{home_share:.1f}%")
-        c3.metric(f'Quota Rischio {st.session_state['away_team']}', f"{away_share:.1f}%")
+        
+        # Rimosse le colonne (c1, c2, c3 = st.columns) per visualizzare le metriche in pila su mobile.
+        # Streamlit crea automaticamente un layout a colonna singola su schermi piccoli per gli elementi non in st.columns.
+        st.metric('Stima Totale Gialli', f"{est_total:.2f}")
+        st.metric(f'Quota Rischio {st.session_state['home_team']}', f"{home_share:.1f}%")
+        st.metric(f'Quota Rischio {st.session_state['away_team']}', f"{away_share:.1f}%")
+        
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown('***')
@@ -381,4 +385,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
