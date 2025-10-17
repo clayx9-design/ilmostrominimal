@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 
 # ------------------------------------------------------------
-# Il Mostro 5.0 - v6 NO EXPORT (Minimal Header + Tema Migliorato)
+# Il Mostro 5.0 - v6 NO EXPORT (Tema Giallo/Rosso)
 # ------------------------------------------------------------
 
 # CONFIG
@@ -18,55 +18,58 @@ STABILIZATION_K = 0.5
 st.set_page_config(page_title="Il Mostro 5.0 - Solo UI", page_icon="🤖⚽", layout="wide")
 
 # -------------------------
-# CSS (TEMA MIGLIORATO PER CONTRASTO E SICUREZZA)
+# CSS (TEMA GIALLLO/ROSSO)
 # -------------------------
 st.markdown("""
 <style>
 /* Base Theme */
-body { background-color: #f0f2f6; } 
+/* Sfondo dell'app: Grigio chiaro per un contrasto migliore */
+body { background-color: #e9ecef; } 
 
+/* Intestazione: Giallo brillante */
 .main-header { 
     font-size: 2.8rem; 
-    color: #0b3d91; 
+    color: #ffc107; /* Giallo brillante */
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.1); 
     font-weight: 900; 
     text-align: center; 
     padding-bottom: 5px; 
-    border-bottom: 3px solid #0b3d91;
+    border-bottom: 3px solid #ffc107;
     margin-bottom: 20px;
 }
-.small-muted { color: #6b7280; font-size: 1.1rem; text-align: center; margin-bottom: 30px;} 
+h2, h3, h4 { color: #dc3545; } /* Titoli secondari in rosso */
 
-/* Pulsanti: Contraso forte */
+/* Pulsanti: Giallo/Blu scuro per leggibilità */
 .stButton>button { 
     border-radius: 8px; 
     font-weight: bold;
-    border: 1px solid #0b3d91;
-    color: #0b3d91;
-    background-color: white;
+    border: 1px solid #ffc107; /* Bordo Giallo */
+    color: #0b3d91; /* Testo Blu Scuro */
+    background-color: #fff8e1; /* Sfondo Giallo chiarissimo */
     transition: all 0.3s;
 }
 .stButton>button:hover {
-    background-color: #0b3d91;
+    background-color: #ffc107; /* Hover Giallo scuro */
     color: white;
 }
 
-/* Summary Card Styling: Bianco puro su sfondo grigio chiaro */
+/* Summary Card Styling: Sfondo giallo pallido (richiamo cartellino) */
 .card { 
-    background: #ffffff; 
+    background: #fff8e1; /* Giallo molto chiaro */
     border-radius: 15px; 
     padding: 20px; 
-    box-shadow: 0 10px 30px rgba(11,61,145,0.1); 
+    box-shadow: 0 10px 30px rgba(255,193,7,0.2); /* Ombra Gialla */
     margin-bottom: 30px; 
 }
 
-/* Metriche: Leggermente colorate per profondità */
+/* Metriche: Bianco con bordo Rosso (richiamo cartellino) */
 .stMetric {
-    background-color: #f8f9fa; /* Bianco sporco/grigio chiarissimo */
+    background-color: #ffffff; /* Bianco puro per contrasto elevato */
     padding: 15px;
     border-radius: 10px;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+    box-shadow: 0 3px 10px rgba(220,53,69,0.15); /* Ombra Rossa */
     margin-bottom: 10px; 
-    border-left: 5px solid #0b3d91; /* Aggiunto un tocco di colore */
+    border-left: 5px solid #dc3545; /* Bordo Rosso forte */
 }
 
 /* Player row styling for exclusion */
@@ -89,7 +92,7 @@ body { background-color: #f0f2f6; }
 """, unsafe_allow_html=True)
 
 # -------------------------
-# Utility & Data Loading
+# Utility & Data Loading (Invariate)
 # -------------------------
 @st.cache_data(show_spinner=False)
 def load_excel(source):
@@ -128,9 +131,6 @@ def load_excel(source):
         st.error(f"Errore caricamento Excel: Assicurati che il file 'Il Mostro 5.0.xlsx' sia presente e che 'openpyxl' sia installato (controlla requirements.txt). Dettaglio: {e}")
         return {}, pd.DataFrame(), 0.3
 
-# -------------------------
-# Calcoli (Funzioni invariate)
-# -------------------------
 def calculate_referee_index(ref_row, arb_medie):
     try:
         if ref_row is None or ref_row.empty: return 1.0, 'Media'
@@ -217,10 +217,6 @@ def risk_to_probability(risk, expected_total):
     normalized = raw / cap if cap>0 else 0
     final = cap * (normalized ** 0.92)
     return float(np.clip(final, 0.0, MAX_INDIVIDUAL_PROBABILITY))
-
-# -------------------------
-# UI Helpers
-# -------------------------
 
 def exclude_player(player_name):
     """Rimuove un giocatore dai risultati combinati e aggiorna lo stato."""
