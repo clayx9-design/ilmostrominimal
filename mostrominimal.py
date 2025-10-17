@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 
 # ------------------------------------------------------------
-# Il Mostro 5.0 - v6 NO EXPORT (Tema Giallo/Rosso)
+# Il Mostro 5.0 - v6 NO EXPORT (Tema Giallo/Rosso + Fix Testo Card)
 # ------------------------------------------------------------
 
 # CONFIG
@@ -60,6 +60,10 @@ h2, h3, h4 { color: #dc3545; } /* Titoli secondari in rosso */
     padding: 20px; 
     box-shadow: 0 10px 30px rgba(255,193,7,0.2); /* Ombra Gialla */
     margin-bottom: 30px; 
+}
+/* Card (testo forzato a nero): FIX PER LEGGIBILITÀ SU SFONDO CHIARO */
+.card, .card *, .stMetric > div[data-testid="stMetricValue"] { 
+    color: #212529 !important; /* Testo forzato a nero scuro */
 }
 
 /* Metriche: Bianco con bordo Rosso (richiamo cartellino) */
