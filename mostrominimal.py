@@ -18,7 +18,7 @@ STABILIZATION_K = 0.5
 st.set_page_config(page_title="Il Mostro 5.0 - Solo UI", page_icon="🤖⚽", layout="wide")
 
 # -------------------------
-# CSS (TEMA GIALLLO/ROSSO - Leggibilità Mobile Massima)
+# CSS (TEMA GIALLLO/ROSSO - Leggibilità Mobile Massima + Miglioramenti Responsive)
 # -------------------------
 st.markdown("""
 <style>
@@ -26,7 +26,7 @@ st.markdown("""
 /* Sfondo dell'app: Grigio chiaro per un contrasto migliore */
 body { background-color: #e9ecef; } 
 
-/* Intestazione: Giallo brillante */
+/* Intestazione: Giallo brillante con responsive font size */
 .main-header { 
     font-size: 2.8rem; 
     color: #ffc107; /* Giallo brillante */
@@ -39,21 +39,25 @@ body { background-color: #e9ecef; }
 }
 h2, h3, h4 { color: #dc3545; } /* Titoli secondari in rosso */
 
-/* Pulsanti: Giallo/Blu scuro per leggibilità */
+/* Pulsanti: Giallo/Blu scuro per leggibilità + Touch-friendly su mobile */
 .stButton>button { 
     border-radius: 8px; 
     font-weight: bold;
+    font-size: 1.1rem; /* Aumentato per touch */
+    padding: 12px 20px; /* Padding maggiore per touch */
     border: 1px solid #ffc107; /* Bordo Giallo */
     color: #0b3d91; /* Testo Blu Scuro */
     background-color: #fff8e1; /* Sfondo Giallo chiarissimo */
     transition: all 0.3s;
+    min-height: 44px; /* Altezza minima per touch target */
+    width: 100%; /* Full width su mobile */
 }
 .stButton>button:hover {
     background-color: #ffc107; /* Hover Giallo scuro */
     color: white;
 }
 
-/* Summary Card Styling: Sfondo giallo pallido (richiamo cartellino) */
+/* Summary Card Styling: Sfondo giallo pallido (richiamo cartellino) + Responsive padding */
 .card { 
     background: #fff8e1; /* Giallo molto chiaro */
     border-radius: 15px; 
@@ -66,7 +70,7 @@ h2, h3, h4 { color: #dc3545; } /* Titoli secondari in rosso */
     color: #212529 !important; /* Testo forzato a nero scuro */
 }
 
-/* Metriche: Bianco con bordo Rosso (richiamo cartellino) */
+/* Metriche: Bianco con bordo Rosso (richiamo cartellino) + Migliorata visibilità report */
 .stMetric {
     background-color: #ffffff; /* Bianco puro per contrasto elevato */
     padding: 15px;
@@ -74,23 +78,73 @@ h2, h3, h4 { color: #dc3545; } /* Titoli secondari in rosso */
     box-shadow: 0 3px 10px rgba(220,53,69,0.15); /* Ombra Rossa */
     margin-bottom: 10px; 
     border-left: 5px solid #dc3545; /* Bordo Rosso forte */
+    font-size: 1.2rem; /* Font più grande per report visibili */
+}
+.stMetric .stMetricLabel {
+    color: #495057 !important; /* Etichetta scura per contrasto */
+    font-weight: bold;
+}
+.stMetric .stMetricValue {
+    color: #dc3545 !important; /* Valore in rosso per evidenziazione */
+    font-size: 1.5rem; /* Valore più grande */
 }
 
-/* Player row styling for exclusion */
+/* Player row styling for exclusion + Responsive */
 .player-row-container {
     background-color: white;
-    padding: 10px 15px;
+    padding: 15px; /* Aumentato per mobile */
     border-radius: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 12px; /* Spaziatura maggiore */
     border: 1px solid #e5e7eb;
+    display: flex;
+    flex-direction: column; /* Stack su mobile */
+    gap: 10px;
 }
 .player-info-text {
-    font-size: 1.1rem;
+    font-size: 1.2rem; /* Aumentato per leggibilità */
     font-weight: 500;
 }
 .player-team-text {
     font-weight: bold;
     color: #4b5563;
+    font-size: 1.1rem;
+}
+
+/* Miglioramenti Responsive per Mobile */
+@media (max-width: 768px) {
+    .main-header { 
+        font-size: 2.2rem; /* Ridotto su mobile */
+        padding: 10px;
+    }
+    .card { 
+        padding: 15px; /* Padding ridotto ma leggibile */
+        margin-bottom: 20px;
+    }
+    .stButton>button {
+        padding: 15px; /* Extra padding su mobile */
+        font-size: 1.2rem;
+    }
+    .player-row-container {
+        padding: 20px; /* Extra per touch */
+    }
+    .player-info-text, .player-team-text {
+        text-align: center; /* Centrato su mobile per better UX */
+    }
+    /* Metriche stacked e full width */
+    .stMetric {
+        font-size: 1.3rem;
+        padding: 20px;
+    }
+}
+
+/* Spinner e Toast visibili (alto contrasto) */
+[data-testid="stSpinner"] {
+    color: #dc3545 !important; /* Rosso per visibilità */
+}
+.stToast {
+    background-color: #fff8e1 !important;
+    color: #212529 !important;
+    border: 1px solid #ffc107 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -372,20 +426,13 @@ def main():
                 team = row['Team']
                 pos = row['Pos']
                 
-                # Player Row layout
+                # Player Row layout (ora flex per meglio responsive)
                 with st.container():
                     st.markdown('<div class="player-row-container">', unsafe_allow_html=True)
-                    # Colonne ottimizzate per la riga del giocatore (Team, Player/Pos, Button)
-                    col_t, col_p, col_btn = st.columns([1, 2.5, 0.5])
-                    
-                    with col_t:
-                        st.markdown(f'<span class="player-team-text">{team}</span>', unsafe_allow_html=True)
-                    with col_p:
-                        # Qui il Risk e Prob % sono nascosti, mostriamo solo Nome e Posizione
-                        st.markdown(f'<span class="player-info-text">{player} ({pos})</span>', unsafe_allow_html=True)
-                    with col_btn:
-                        # Pulsante di esclusione
-                        st.button('❌ Escludi', key=f'exclude_{player}_{index}', on_click=exclude_player, args=(player,), help='Rimuovi giocatore non titolare/disponibile', use_container_width=True)
+                    # Su mobile si stacka automaticamente, ma usiamo full width per button
+                    st.markdown(f'<div style="text-align: center;"><span class="player-team-text">{team}</span></div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="text-align: center;"><span class="player-info-text">{player} ({pos})</span></div>', unsafe_allow_html=True)
+                    st.button('❌ Escludi', key=f'exclude_{player}_{index}', on_click=exclude_player, args=(player,), help='Rimuovi giocatore non titolare/disponibile', use_container_width=True)
                     st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info('Nessun giocatore con rischio rilevante trovato (o tutti sono stati esclusi).')
