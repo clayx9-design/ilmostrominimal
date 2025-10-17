@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 
 # ------------------------------------------------------------
-# Il Mostro 5.0 - v6 NO EXPORT (FIXED SYNTAX)
+# Il Mostro 5.0 - v8 EQUILIBRIO PRONOSTICO (NO PROB DISPLAY)
 # ------------------------------------------------------------
 
 # CONFIG
@@ -14,14 +14,15 @@ EXCEL_FILE_NAME = "Il Mostro 5.0.xlsx"
 LEAGUE_AVG_MATCH_CARDS = 4.5
 MAX_INDIVIDUAL_PROBABILITY = 42.0
 STABILIZATION_K = 0.5
+# NUOVE SOGLIE PER L'EQUILIBRIO 2-2/3-1/4-0
+HIGH_RISK_THRESHOLD = 0.65 # Soglia per passare da 2-2 a 3-1 (65%)
+EXTREME_RISK_THRESHOLD = 0.85 # Soglia per passare da 3-1 a 4-0 (85%)
 
 st.set_page_config(page_title="Il Mostro 5.0 - Solo UI", page_icon="🤖⚽", layout="wide")
 
 # -------------------------
 # CSS (Blocco sintatticamente sicuro)
 # -------------------------
-# NOTA: Spostare il blocco di codice CSS/HTML all'inizio evita conflitti
-# di indentation con le funzioni che seguono e la chiamata main().
 st.markdown("""
 <style>
 /* Base Theme */
@@ -60,7 +61,7 @@ body { background-color: #f8fafc; }
     background-color: white;
     padding: 15px;
     border-radius: 10px;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.05); /* Qui avveniva l'errore di sintassi */
+    box-shadow: 0 3px 10px rgba(0,0,0,0.05);
 }
 /* Player row styling for exclusion */
 .player-row-container {
@@ -82,7 +83,7 @@ body { background-color: #f8fafc; }
 """, unsafe_allow_html=True)
 
 # -------------------------
-# Utility & Data Loading
+# Utility & Data Loading (Mantengo invariate)
 # -------------------------
 @st.cache_data(show_spinner=False)
 def load_excel(source):
@@ -225,6 +226,75 @@ def exclude_player(player_name):
         st.rerun()
 
 # -------------------------
+# FUNZIONE DI BILANCIAMENTO (Invariata)
+# -------------------------
+
+def get_top4_balanced_selection(combined_df, home_team, away_team, home_share):
+    """
+    Seleziona i Top 4 giocatori privilegiando l'equilibrio 2-2, 
+    passando a 3-1 o 4-0 solo in caso di estrema disparità di rischio.
+    """
+    
+    # Seleziona la squadra dominante (quella con la quota di rischio maggiore)
+    if home_share >= 0.5:
+        dominant_team, underdog_team = home_team, away_team
+        dominant_share = home_share
+    else:
+        dominant_team, underdog_team = away_team, home_team
+        dominant_share = 1.0 - home_share
+
+    # DataFrame filtrati
+    dominant_df = combined_df[combined_df['Team'] == dominant_team].sort_values('Risk', ascending=False)
+    underdog_df = combined_df[combined_df['Team'] == underdog_team].sort_values('Risk', ascending=False)
+
+    # Criterio di selezione (Dominante - Sfavorita)
+    # Default: 2-2
+    dom_count, und_count = 2, 2
+    
+    if dominant_share >= EXTREME_RISK_THRESHOLD: # Es. > 85%
+        # Caso Estremo: 4-0
+        dom_count, und_count = 4, 0
+    elif dominant_share >= HIGH_RISK_THRESHOLD: # Es. 65% - 85%
+        # Caso Estremo: 3-1
+        dom_count, und_count = 3, 1
+        
+    # Applica i limiti
+    dom_count = min(dom_count, len(dominant_df))
+    und_count = min(und_count, len(underdog_df))
+    
+    # Se la somma è minore di 4 (per mancanza di giocatori), distribuisci il rimanente
+    remaining_slots = 4 - (dom_count + und_count)
+    
+    if remaining_slots > 0:
+        # Tenta di aggiungere i rimanenti alla squadra dominante
+        dom_to_add = min(remaining_slots, len(dominant_df) - dom_count)
+        dom_count += dom_to_add
+        remaining_slots -= dom_to_add
+
+        # Se ci sono ancora slot liberi, aggiungili alla squadra sfavorita
+        if remaining_slots > 0:
+            und_to_add = min(remaining_slots, len(underdog_df) - und_count)
+            und_count += und_to_add
+
+
+    # Prendi i top N per ogni squadra
+    selected_dominant = dominant_df.head(dom_count)
+    selected_underdog = underdog_df.head(und_count)
+    
+    # Combina e riordina per Rischio (per la visualizzazione finale)
+    top4_df = pd.concat([selected_dominant, selected_underdog])
+    top4_df = top4_df.sort_values('Risk', ascending=False).head(4).reset_index(drop=True)
+    
+    # Etichetta per mostrare la distribuzione adottata
+    prognosis_label = ""
+    if home_team == dominant_team:
+         prognosis_label = f"**Pronostico Adoptato:** {dom_count}-{und_count} (Casa-Trasferta)"
+    else:
+         prognosis_label = f"**Pronostico Adoptato:** {und_count}-{dom_count} (Casa-Trasferta)"
+         
+    return top4_df, prognosis_label
+
+# -------------------------
 # Main Application Logic
 # -------------------------
 
@@ -237,7 +307,7 @@ def main():
     # Inizializzazione stato
     state_defaults = {
         'combined_results': pd.DataFrame(), 'home_team': '', 'away_team': '', 
-        'est_total': 0.0, 'ref_cat': '', 'ref_name': ''
+        'est_total': 0.0, 'ref_cat': '', 'ref_name': '', 'prognosis_label': ''
     }
     for k, v in state_defaults.items():
         if k not in st.session_state: st.session_state[k] = v
@@ -312,10 +382,17 @@ def main():
             combined['Risk'] = combined['Risk'].round(3)
             combined = combined.sort_values('Risk', ascending=False).reset_index(drop=True)
             
+            # Calcolo Quote Rischio per il bilanciamento
+            total_risk = combined['Risk'].sum()
+            home_risk_sum = combined[combined['Team']==home]['Risk'].sum()
+            home_share = (home_risk_sum / total_risk) if total_risk > 0 else 0.5
+            
             st.session_state['combined_results'] = combined.copy()
             st.session_state['est_total'] = est_total
             st.session_state['ref_cat'] = ref_cat
             st.session_state['ref_name'] = ref_name
+            st.session_state['home_share'] = home_share 
+            st.session_state['away_share'] = 1.0 - home_share
             
         st.rerun()
 
@@ -323,11 +400,23 @@ def main():
         est_total = st.session_state['est_total']
         ref_cat = st.session_state['ref_cat']
         ref_name = st.session_state['ref_name']
+        
+        # Uso 'combined_results' che è già filtrato per gli esclusi
         current_combined = st.session_state['combined_results'].copy()
         
+        # Ricalcolo quote Rischio sul set di giocatori rimanenti
         total_risk_current = current_combined['Risk'].sum()
-        home_share = (current_combined[current_combined['Team']==st.session_state['home_team']]['Risk'].sum() / total_risk_current * 100) if total_risk_current > 0 else 50.0
-        away_share = 100 - home_share
+        home_risk_sum_current = current_combined[current_combined['Team']==st.session_state['home_team']]['Risk'].sum()
+        home_share_current = (home_risk_sum_current / total_risk_current) if total_risk_current > 0 else 0.5
+        away_share_current = 1.0 - home_share_current
+
+        # Eseguo il bilanciamento sul set filtrato (per onorare le esclusioni)
+        top4_df, prognosis_label = get_top4_balanced_selection(
+            current_combined, 
+            st.session_state['home_team'], 
+            st.session_state['away_team'], 
+            home_share_current
+        )
 
         # 3. Visualizzazione Risultati
         st.subheader('3. Risultati e Top 4 Consigliati ✨')
@@ -337,16 +426,16 @@ def main():
         st.markdown(f"**{st.session_state['home_team']} vs {st.session_state['away_team']}** — Arbitro: **{ref_name}** ({ref_cat})", unsafe_allow_html=True)
         c1, c2, c3 = st.columns([1,1,1])
         c1.metric('Stima Totale Gialli', f"{est_total:.2f}")
-        c2.metric(f'Quota Rischio {st.session_state['home_team']}', f"{home_share:.1f}%")
-        c3.metric(f'Quota Rischio {st.session_state['away_team']}', f"{away_share:.1f}%")
+        c2.metric(f'Quota Rischio {st.session_state['home_team']}', f"{home_share_current*100:.1f}%")
+        c3.metric(f'Quota Rischio {st.session_state['away_team']}', f"{away_share_current*100:.1f}%")
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown('***')
         
-        # Top 4 Consigliati (Filtro) - FISSO A 4 GIOCATORI
-        top4_df = current_combined.head(4).copy()
+        # Top 4 Consigliati (Filtro)
         st.markdown('#### 🏆 Top 4 Giocatori con Rischio Più Alto')
-        st.caption('Usa il pulsante **❌ Escludi** per rimuovere un giocatore non titolare o non disponibile.')
+        st.markdown(prognosis_label, unsafe_allow_html=True) # Mostro la distribuzione scelta
+        st.caption('Usa il pulsante **❌ Escludi** per rimuovere un giocatore non titolare o non disponibile. L\'esclusione ricalcolerà la distribuzione Top 4.')
 
         # Mostra la classifica e i pulsanti di esclusione
         st.markdown('<div style="margin-top: 15px;"></div>', unsafe_allow_html=True)
@@ -358,12 +447,15 @@ def main():
                 
                 # Player Row layout
                 with st.container():
+                    # Modifica qui: Rimossa la colonna 'col_prob' e la probabilità
+                    col_t, col_p, col_btn = st.columns([1, 3, 0.5])
+                    
                     st.markdown('<div class="player-row-container">', unsafe_allow_html=True)
-                    col_t, col_p, col_btn = st.columns([1, 2.5, 0.5])
                     
                     with col_t:
                         st.markdown(f'<span class="player-team-text">{team}</span>', unsafe_allow_html=True)
                     with col_p:
+                        # Rimosso il display della probabilità
                         st.markdown(f'<span class="player-info-text">{player} ({pos})</span>', unsafe_allow_html=True)
                     with col_btn:
                         # Pulsante di esclusione
