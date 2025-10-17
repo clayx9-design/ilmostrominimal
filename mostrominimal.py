@@ -231,7 +231,6 @@ def exclude_player(player_name):
 def main():
     # Intestazione richiesta dall'utente
     st.markdown('<div class="main-header">Il Mostro 5.0 ⚽</div>', unsafe_allow_html=True)
-    st.markdown('<div class="small-muted">Analisi e Pronostici Cartellini Serie A</div>')
     st.markdown('***')
     
     # Inizializzazione stato
@@ -382,3 +381,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
