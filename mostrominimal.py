@@ -1,476 +1,662 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import io
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import warnings
 import os
-from datetime import datetime
+warnings.filterwarnings('ignore')
 
-# ------------------------------------------------------------
-# Il Mostro 5.0 - v8 EQUILIBRIO PRONOSTICO (NO PROB DISPLAY)
-# ------------------------------------------------------------
+# Configurazione pagina
+st.set_page_config(
+    page_title="⚽ Il Mostro 5.0 - Predittore Cartellini Pro Enhanced",
+    page_icon="⚽",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# CONFIG
-EXCEL_FILE_NAME = "Il Mostro 5.0.xlsx"
-LEAGUE_AVG_MATCH_CARDS = 4.5
-MAX_INDIVIDUAL_PROBABILITY = 42.0
-STABILIZATION_K = 0.5
-# NUOVE SOGLIE PER L'EQUILIBRIO 2-2/3-1/4-0
-HIGH_RISK_THRESHOLD = 0.65 # Soglia per passare da 2-2 a 3-1 (65%)
-EXTREME_RISK_THRESHOLD = 0.85 # Soglia per passare da 3-1 a 4-0 (85%)
-
-st.set_page_config(page_title="Il Mostro 5.0 - Solo UI", page_icon="🤖⚽", layout="wide")
-
-# -------------------------
-# CSS (Blocco sintatticamente sicuro)
-# -------------------------
+# CSS personalizzato migliorato
 st.markdown("""
 <style>
-/* Base Theme */
-body { background-color: #f8fafc; }
-.main-header { 
-    font-size: 2.8rem; 
-    color: #0b3d91; 
-    font-weight: 900; 
-    text-align: center; 
-    padding-bottom: 5px; 
-    border-bottom: 3px solid #0b3d91;
-    margin-bottom: 20px;
-}
-.small-muted { color: #6b7280; font-size: 1.1rem; text-align: center; margin-bottom: 30px;}
-.stButton>button { 
-    border-radius: 8px; 
-    font-weight: bold;
-    border: 1px solid #0b3d91;
-    color: #0b3d91;
-    background-color: white;
-    transition: all 0.3s;
-}
-.stButton>button:hover {
-    background-color: #0b3d91;
-    color: white;
-}
-/* Summary Card Styling */
-.card { 
-    background: #eef4ff;
-    border-radius: 15px; 
-    padding: 20px; 
-    box-shadow: 0 10px 30px rgba(11,61,145,0.1); 
-    margin-bottom: 30px; 
-}
-.stMetric {
-    background-color: white;
-    padding: 15px;
-    border-radius: 10px;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.05);
-}
-/* Player row styling for exclusion */
-.player-row-container {
-    background-color: white;
-    padding: 10px 15px;
-    border-radius: 8px;
-    margin-bottom: 8px;
-    border: 1px solid #e5e7eb;
-}
-.player-info-text {
-    font-size: 1.1rem;
-    font-weight: 500;
-}
-.player-team-text {
-    font-weight: bold;
-    color: #4b5563;
-}
+    .main-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2.5rem;
+        border-radius: 20px;
+        text-align: center;
+        color: white;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+        100% { transform: scale(1); }
+    }
+    
+    .metric-card {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        padding: 1.8rem;
+        border-radius: 18px;
+        color: white;
+        text-align: center;
+        box-shadow: 0 12px 35px rgba(0,0,0,0.15);
+        margin-bottom: 1.2rem;
+        transition: transform 0.3s ease;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .prediction-high {
+        background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+        color: white;
+        padding: 1.2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin: 0.8rem 0;
+        box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+        border-left: 5px solid #ff4757;
+    }
+    
+    .prediction-medium {
+        background: linear-gradient(135deg, #feca57, #ff9ff3);
+        color: white;
+        padding: 1.2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin: 0.8rem 0;
+        box-shadow: 0 6px 20px rgba(254, 202, 87, 0.4);
+        border-left: 5px solid #ffa502;
+    }
+    
+    .prediction-low {
+        background: linear-gradient(135deg, #48dbfb, #0abde3);
+        color: white;
+        padding: 1.2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin: 0.8rem 0;
+        box-shadow: 0 6px 20px rgba(72, 219, 251, 0.4);
+        border-left: 5px solid #00a8ff;
+    }
+    
+    .formula-box {
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        padding: 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        border-left: 6px solid #667eea;
+        color: #2c3e50;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .auto-load-info {
+        background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        margin: 1rem 0;
+        font-weight: bold;
+    }
+    
+    .team-section {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 1.5rem;
+        border-radius: 15px;
+        margin: 1.5rem 0;
+        border-left: 6px solid #4ECDC4;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .stats-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        margin: 1rem 0;
+        border-top: 4px solid #667eea;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------
-# Utility & Data Loading (Mantengo invariate)
-# -------------------------
-@st.cache_data(show_spinner=False)
-def load_excel(source):
-    """Carica file excel. Restituisce dizionario fogli squadra e DataFrame arbitri."""
-    try:
-        if isinstance(source, str) and os.path.exists(source):
-            xls = pd.ExcelFile(source)
-        elif hasattr(source, 'read'):
-            xls = pd.ExcelFile(io.BytesIO(source.read()))
-        else:
-            return {}, pd.DataFrame(), 0.3
-
-        sheets = xls.sheet_names
-        if len(sheets) == 0:
-            return {}, pd.DataFrame(), 0.3
-
-        arb_df = pd.read_excel(xls, sheet_name=sheets[-1])
-        arb_df.columns = [str(c).strip() for c in arb_df.columns]
+class EnhancedMostroPredictor:
+    def __init__(self):
+        self.teams_data = {}
+        self.referees_data = pd.DataFrame()
+        self.QUOTA_MEDIA = 28.5
+        self.QUOTA_MASSIMA = 41.0
+        self.QUOTA_MINIMA = 15.0
         
-        teams = {}
-        for s in sheets[:-1]:
-            df = pd.read_excel(xls, sheet_name=s)
-            df.columns = [str(c).replace('\n', ' ').strip() for c in df.columns]
-            required = ['Player', 'Pos', 'Cartellini Gialli Totali', '90s Giocati Totali']
-            if all(c in df.columns for c in required):
-                df = df.dropna(subset=['Player', 'Pos']).fillna(0)
-                teams[s] = df
+        # Parametri della formula avanzata
+        self.MEDIA_ASSOLUTA_PARTITE_PER_GIALLO = 5.2  # Media campionato
+        self.MEDIA_ASSOLUTA_FALLI_PER_GIALLO = 6.8    # Media campionato
+    
+    def _process_data_frame(self, df_raw):
+        """Esegue la pulizia e la conversione dei tipi per il DataFrame."""
+        df = df_raw.copy()
+        df.columns = [str(c).replace('\n', ' ').strip() for c in df.columns]
         
-        total_g, total_90 = 0, 0
-        for tdf in teams.values():
-            total_g += tdf['Cartellini Gialli Totali'].sum()
-            total_90 += tdf['90s Giocati Totali'].sum()
-        global_avg = (total_g / total_90) if total_90 > 0 else 0.3
-        return teams, arb_df, global_avg
-    except Exception as e:
-        st.error(f"Errore caricamento Excel: Assicurati che il file 'Il Mostro 5.0.xlsx' sia presente e che 'openpyxl' sia installato (controlla requirements.txt). Dettaglio: {e}")
-        return {}, pd.DataFrame(), 0.3
-
-# -------------------------
-# Calcoli (Funzioni invariate)
-# -------------------------
-def calculate_referee_index(ref_row, arb_medie):
-    try:
-        if ref_row is None or ref_row.empty: return 1.0, 'Media'
-        gialli = pd.to_numeric(ref_row.get('Gialli a partita', ref_row.get('Gialli', np.nan)), errors='coerce')
-        gialli = float(gialli) if not pd.isna(gialli) else arb_medie.get('gialli', 4.0)
-        rossi = pd.to_numeric(ref_row.get('Rossi a partita', ref_row.get('Rossi', np.nan)), errors='coerce')
-        rossi = float(rossi) if not pd.isna(rossi) else arb_medie.get('rossi', 0.2)
-        falli = pd.to_numeric(ref_row.get('Falli a partita', ref_row.get('Falli', np.nan)), errors='coerce')
-        falli = float(falli) if not pd.isna(falli) else arb_medie.get('falli', 25.0)
-
-        norm = (gialli / (arb_medie['gialli'] if arb_medie['gialli']>0 else LEAGUE_AVG_MATCH_CARDS)) * 0.7
-        norm += (rossi / (arb_medie['rossi'] if arb_medie['rossi']>0 else 0.2)) * 0.15
-        norm += (falli / (arb_medie['falli'] if arb_medie['falli']>0 else 25.0)) * 0.15
-
-        severity = max(0.6, norm)
-        if severity > 1.25: cat = 'Alta'
-        elif severity < 0.85: cat = 'Bassa'
-        else: cat = 'Media'
-        return round(severity, 3), cat
-    except Exception:
-        return 1.0, 'Media'
-
-def estimate_match_total_cards(ref_index, home_df, away_df):
-    baseline = LEAGUE_AVG_MATCH_CARDS * (0.9 + 0.3 * (ref_index - 1.0))
-    baseline = np.clip(baseline, 3.0, 8.0)
-    
-    def team_avg(df):
-        if df is None or df.empty: return LEAGUE_AVG_MATCH_CARDS/2
-        total_g = df['Cartellini Gialli Totali'].sum()
-        total_90 = df['90s Giocati Totali'].sum()
-        games = max(1.0, total_90/11.0)
-        return total_g / games
-
-    h_avg = team_avg(home_df)
-    a_avg = team_avg(away_df)
-    team_factor = (h_avg + a_avg) / (2 * LEAGUE_AVG_MATCH_CARDS)
-    est = baseline * (0.85 + 0.35 * team_factor)
-    return float(np.clip(est, 3.5, 8.0))
-
-def calculate_player_risk(row, global_avg, is_home=True, ref_index=1.0):
-    try:
-        pos = str(row.get('Pos', '')).upper()
-        if 'GK' in pos: return 0.0
-
-        g_tot = float(pd.to_numeric(row.get('Cartellini Gialli Totali', 0), errors='coerce') or 0)
-        n90 = float(pd.to_numeric(row.get('90s Giocati Totali', 0), errors='coerce') or 0)
-        g_curr = float(pd.to_numeric(row.get('Cartellini Gialli 25/26', 0), errors='coerce') or 0)
-        n90_curr = float(pd.to_numeric(row.get('90s Giocati 25/26', 0), errors='coerce') or 0)
-        falli = float(pd.to_numeric(row.get('Falli Fatti Totali', 0), errors='coerce') or 0)
-
-        n90_stab = n90 + (STABILIZATION_K if n90 < 5 else 0)
-        n90c_stab = n90_curr + (STABILIZATION_K if n90_curr < 5 else 0)
-        base_rate = (g_tot / n90_stab) if n90_stab>0 else global_avg
-        trend_rate = (g_curr / n90c_stab) if n90c_stab>0 else base_rate
-
-        w_base = 0.7
-        risk = base_rate * w_base + trend_rate * (1 - w_base)
-
-        if n90 > 0:
-            foul_intensity = (falli / n90)
-            risk *= (1 + np.log1p(foul_intensity) * 0.25)
-
-        if any(x in pos for x in ['ATT', 'FW', 'ST']): pos_mod = 0.85
-        elif any(x in pos for x in ['MF', 'CC', 'CM']): pos_mod = 0.98
-        else: pos_mod = 1.0
-        risk *= pos_mod
-        risk *= (1.06 if is_home else 0.94)
-        risk *= (1 + (ref_index - 1.0) * 0.08)
-
-        return float(max(0, risk))
-    except Exception:
-        return 0.0
-
-def risk_to_probability(risk, expected_total):
-    if risk <= 0: return 0.0
-    center = 6.5
-    scale = 1.0
-    raw = MAX_INDIVIDUAL_PROBABILITY * (1 / (1 + np.exp(-scale * (risk - center))))
-
-    stress = min(1.0, expected_total / LEAGUE_AVG_MATCH_CARDS)
-    cap = MAX_INDIVIDUAL_PROBABILITY * (0.88 + 0.12 * stress)
-    cap = min(cap, MAX_INDIVIDUAL_PROBABILITY)
-
-    normalized = raw / cap if cap>0 else 0
-    final = cap * (normalized ** 0.92)
-    return float(np.clip(final, 0.0, MAX_INDIVIDUAL_PROBABILITY))
-
-# -------------------------
-# UI Helpers
-# -------------------------
-
-def exclude_player(player_name):
-    """Rimuove un giocatore dai risultati combinati e aggiorna lo stato."""
-    if not st.session_state['combined_results'].empty:
-        st.session_state['combined_results'] = st.session_state['combined_results'][
-            st.session_state['combined_results']['Player'] != player_name
-        ].reset_index(drop=True)
-        st.toast(f"❌ Giocatore {player_name} escluso!", icon='🚫')
-        st.rerun()
-
-# -------------------------
-# FUNZIONE DI BILANCIAMENTO (Invariata)
-# -------------------------
-
-def get_top4_balanced_selection(combined_df, home_team, away_team, home_share):
-    """
-    Seleziona i Top 4 giocatori privilegiando l'equilibrio 2-2, 
-    passando a 3-1 o 4-0 solo in caso di estrema disparità di rischio.
-    """
-    
-    # Seleziona la squadra dominante (quella con la quota di rischio maggiore)
-    if home_share >= 0.5:
-        dominant_team, underdog_team = home_team, away_team
-        dominant_share = home_share
-    else:
-        dominant_team, underdog_team = away_team, home_team
-        dominant_share = 1.0 - home_share
-
-    # DataFrame filtrati
-    dominant_df = combined_df[combined_df['Team'] == dominant_team].sort_values('Risk', ascending=False)
-    underdog_df = combined_df[combined_df['Team'] == underdog_team].sort_values('Risk', ascending=False)
-
-    # Criterio di selezione (Dominante - Sfavorita)
-    # Default: 2-2
-    dom_count, und_count = 2, 2
-    
-    if dominant_share >= EXTREME_RISK_THRESHOLD: # Es. > 85%
-        # Caso Estremo: 4-0
-        dom_count, und_count = 4, 0
-    elif dominant_share >= HIGH_RISK_THRESHOLD: # Es. 65% - 85%
-        # Caso Estremo: 3-1
-        dom_count, und_count = 3, 1
+        df = df.fillna(0)
         
-    # Applica i limiti
-    dom_count = min(dom_count, len(dominant_df))
-    und_count = min(und_count, len(underdog_df))
-    
-    # Se la somma è minore di 4 (per mancanza di giocatori), distribuisci il rimanente
-    remaining_slots = 4 - (dom_count + und_count)
-    
-    if remaining_slots > 0:
-        # Tenta di aggiungere i rimanenti alla squadra dominante
-        dom_to_add = min(remaining_slots, len(dominant_df) - dom_count)
-        dom_count += dom_to_add
-        remaining_slots -= dom_to_add
-
-        # Se ci sono ancora slot liberi, aggiungili alla squadra sfavorita
-        if remaining_slots > 0:
-            und_to_add = min(remaining_slots, len(underdog_df) - und_count)
-            und_count += und_to_add
-
-
-    # Prendi i top N per ogni squadra
-    selected_dominant = dominant_df.head(dom_count)
-    selected_underdog = underdog_df.head(und_count)
-    
-    # Combina e riordina per Rischio (per la visualizzazione finale)
-    top4_df = pd.concat([selected_dominant, selected_underdog])
-    top4_df = top4_df.sort_values('Risk', ascending=False).head(4).reset_index(drop=True)
-    
-    # Etichetta per mostrare la distribuzione adottata
-    prognosis_label = ""
-    if home_team == dominant_team:
-         prognosis_label = f"**Pronostico Adoptato:** {dom_count}-{und_count} (Casa-Trasferta)"
-    else:
-         prognosis_label = f"**Pronostico Adoptato:** {und_count}-{dom_count} (Casa-Trasferta)"
-         
-    return top4_df, prognosis_label
-
-# -------------------------
-# Main Application Logic
-# -------------------------
-
-def main():
-    # Intestazione richiesta dall'utente
-    st.markdown('<div class="main-header">Il Mostro 5.0 ⚽</div>', unsafe_allow_html=True)
-    st.markdown('<div class="small-muted">Analisi e Pronostici Cartellini Serie A</div>')
-    st.markdown('***')
-    
-    # Inizializzazione stato
-    state_defaults = {
-        'combined_results': pd.DataFrame(), 'home_team': '', 'away_team': '', 
-        'est_total': 0.0, 'ref_cat': '', 'ref_name': '', 'prognosis_label': ''
-    }
-    for k, v in state_defaults.items():
-        if k not in st.session_state: st.session_state[k] = v
-
-    # Caricamento Dati
-    teams, arbitri, global_avg = None, None, 0.3
-    with st.sidebar:
-        st.header("Caricamento Dati 📂")
-        if os.path.exists(EXCEL_FILE_NAME):
-            teams, arbitri, global_avg = load_excel(EXCEL_FILE_NAME)
-            if teams and not arbitri.empty:
-                st.success(f"Dati caricati da {EXCEL_FILE_NAME}")
+        numeric_cols = [
+            'Cartellini Gialli Totali', '90s Giocati Totali', 
+            'Cartellini Gialli 25/26', '90s Giocati 25/26', 
+            'Falli Fatti Totali', 'Falli Fatti 25/26',
+            'Media 90s per Cartellino Totale', 'Media 90s per Cartellino 25/26',
+            'Media Falli per Cartellino Totale', 'Media Falli per Cartellino 25/26',
+            'Ritardo Cartellino (Partite)', # COLONNA CRITICA PER IL RITARDO
+            # Colonne arbitri (per la conversione)
+            'Gialli a partita', 'Rossi a partita', 'Falli a partita'
+        ]
         
-        if not teams or arbitri is None or arbitri.empty:
-             uploaded = st.file_uploader('Carica file Excel (Il Mostro 5.0.xlsx)', type=['xlsx'])
-             if uploaded is not None:
-                teams, arbitri, global_avg = load_excel(uploaded)
-                if teams and not arbitri.empty:
-                    st.success('File caricato con successo.')
-
-
-    if not teams or arbitri is None or arbitri.empty:
-        st.error('⚠️ Carica un file Excel valido per procedere.')
-        st.stop()
-
-    team_names = sorted(teams.keys())
-    ref_name_col = 'Nome' if 'Nome' in arbitri.columns else arbitri.columns[0]
-    arb_medie = {'gialli': arbitri.get('Gialli a partita', pd.Series()).mean() if 'Gialli a partita' in arbitri.columns else 4.0,
-                 'rossi': arbitri.get('Rossi a partita', pd.Series()).mean() if 'Rossi a partita' in arbitri.columns else 0.2,
-                 'falli': arbitri.get('Falli a partita', pd.Series()).mean() if 'Falli a partita' in arbitri.columns else 25.0}
-
-    # 1. Configurazione Partita
-    st.subheader('1. Configura Partita 🏟️')
-    with st.container(border=True):
-        c1, c2, c3 = st.columns([2, 2, 1])
-        with c1:
-            home = st.selectbox('Squadra Casa', team_names, index=team_names.index(st.session_state['home_team']) if st.session_state['home_team'] in team_names else 0, key='home_sel')
-        with c2:
-            away_options = [t for t in team_names if t!=home]
-            away_index = away_options.index(st.session_state['away_team']) if st.session_state['away_team'] in away_options else 0
-            away = st.selectbox('Squadra Trasferta', away_options, index=away_index, key='away_sel')
-        with c3:
-            ref_name = st.selectbox('Arbitro', sorted(arbitri[ref_name_col].astype(str).unique().tolist()), key='ref_sel')
-            st.caption(f"**Data:** {datetime.now().strftime('%Y-%m-%d')}")
-
-    st.markdown('***')
-    st.subheader('2. Esegui Pronostico 🧠')
-
-    if st.button('CALCOLA PRONOSTICO AI 🚀', use_container_width=True):
-        st.session_state['home_team'] = home
-        st.session_state['away_team'] = away
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
-        with st.spinner(f'Analizzando {home} vs {away} con arbitro {ref_name}...'):
-            home_df = teams.get(home).copy()
-            away_df = teams.get(away).copy()
-            ref_row = arbitri[arbitri[ref_name_col] == ref_name].iloc[0] if not arbitri[arbitri[ref_name_col] == ref_name].empty else None
-            ref_index, ref_cat = calculate_referee_index(ref_row, arb_medie)
-            est_total = estimate_match_total_cards(ref_index, home_df, away_df)
+        return df, None
 
-            home_df['Risk'] = home_df.apply(lambda r: calculate_player_risk(r, global_avg, True, ref_index), axis=1)
-            away_df['Risk'] = away_df.apply(lambda r: calculate_player_risk(r, global_avg, False, ref_index), axis=1)
-            home_r = home_df[home_df['Risk']>0].sort_values('Risk', ascending=False).reset_index(drop=True)
-            away_r = away_df[away_df['Risk']>0].sort_values('Risk', ascending=False).reset_index(drop=True)
-
-            home_r['Prob %'] = home_r['Risk'].apply(lambda x: round(risk_to_probability(x, est_total),1))
-            away_r['Prob %'] = away_r['Risk'].apply(lambda x: round(risk_to_probability(x, est_total),1))
-
-            combined = pd.concat([
-                home_r[['Player', 'Pos', 'Risk', 'Prob %']].assign(Team=home), 
-                away_r[['Player', 'Pos', 'Risk', 'Prob %']].assign(Team=away)
-            ])
-            combined['Risk'] = combined['Risk'].round(3)
-            combined = combined.sort_values('Risk', ascending=False).reset_index(drop=True)
-            
-            # Calcolo Quote Rischio per il bilanciamento
-            total_risk = combined['Risk'].sum()
-            home_risk_sum = combined[combined['Team']==home]['Risk'].sum()
-            home_share = (home_risk_sum / total_risk) if total_risk > 0 else 0.5
-            
-            st.session_state['combined_results'] = combined.copy()
-            st.session_state['est_total'] = est_total
-            st.session_state['ref_cat'] = ref_cat
-            st.session_state['ref_name'] = ref_name
-            st.session_state['home_share'] = home_share 
-            st.session_state['away_share'] = 1.0 - home_share
-            
-        st.rerun()
-
-    if not st.session_state['combined_results'].empty:
-        est_total = st.session_state['est_total']
-        ref_cat = st.session_state['ref_cat']
-        ref_name = st.session_state['ref_name']
+    def auto_load_excel_data(self):
+        """Carica automaticamente il file Excel se presente nella directory, leggendo TUTTI i fogli."""
+        excel_files = [
+            "Il Mostro 5.0.xlsx",
+            "il mostro 5.0.xlsx", 
+            "IL MOSTRO 5.0.xlsx",
+            "Il_Mostro_5.0.xlsx"
+        ]
         
-        # Uso 'combined_results' che è già filtrato per gli esclusi
-        current_combined = st.session_state['combined_results'].copy()
-        
-        # Ricalcolo quote Rischio sul set di giocatori rimanenti
-        total_risk_current = current_combined['Risk'].sum()
-        home_risk_sum_current = current_combined[current_combined['Team']==st.session_state['home_team']]['Risk'].sum()
-        home_share_current = (home_risk_sum_current / total_risk_current) if total_risk_current > 0 else 0.5
-        away_share_current = 1.0 - home_share_current
+        for filename in excel_files:
+            if os.path.exists(filename):
+                try:
+                    sheets_dict = pd.read_excel(filename, sheet_name=None)
+                    
+                    teams_loaded_count = 0
+                    referee_loaded = False
+                    
+                    for sheet_name, df_raw in sheets_dict.items():
+                        
+                        df, error_msg = self._process_data_frame(df_raw)
+                        
+                        if df is None or len(df) == 0:
+                            continue
+                            
+                        # LOGICA CARICAMENTO ARBITRI 
+                        ref_sheet_keywords = ['arbitri', 'referee', 'ref']
+                        is_referee_sheet_name = any(kw in sheet_name.lower() for kw in ref_sheet_keywords)
+                        referee_stats_cols = ['Gialli a partita', 'Rossi a partita']
+                        has_referee_stats = any(col in df.columns for col in referee_stats_cols)
+                        ref_col_name = next((col for col in df.columns if 'nome' in col.lower() or 'arbitro' in col.lower()), None)
 
-        # Eseguo il bilanciamento sul set filtrato (per onorare le esclusioni)
-        top4_df, prognosis_label = get_top4_balanced_selection(
-            current_combined, 
-            st.session_state['home_team'], 
-            st.session_state['away_team'], 
-            home_share_current
+                        if (is_referee_sheet_name or has_referee_stats) and ref_col_name:
+                            self.referees_data = df.copy()
+                            referee_loaded = True
+                            continue
+
+                        # LOGICA CARICAMENTO SQUADRE 
+                        required_cols_team = ['Player', 'Pos']
+                        if all(col in df.columns for col in required_cols_team):
+                            df_team = df.dropna(subset=['Player', 'Pos']).copy()
+                            if len(df_team) > 0:
+                                self.teams_data[sheet_name] = df_team
+                                teams_loaded_count += 1
+                                
+                    
+                    if teams_loaded_count > 0:
+                        ref_status = "Arbitri caricati" if referee_loaded else "Arbitri NON caricati"
+                        return True, f"✅ File '{filename}' caricato. Caricate **{teams_loaded_count}** squadre (da {len(sheets_dict)} fogli). {ref_status}."
+                    
+                except Exception as e:
+                    continue
+        
+        return False, "❌ Nessun file 'Il Mostro 5.0.xlsx' trovato nella directory o i dati non sono validi."
+        
+    def load_csv_data(self, uploaded_files):
+        """Carica i dati dai file CSV/XLSX caricati dall'utente (squadre e arbitri)"""
+        if not uploaded_files:
+            return False, "Nessun file caricato."
+
+        self.teams_data = {}
+        self.referees_data = pd.DataFrame()
+        teams_loaded = 0
+        referee_loaded = False
+
+        for file in uploaded_files:
+            try:
+                if file.name.endswith('.csv'):
+                    df_raw = pd.read_csv(file)
+                else:
+                    df_raw = pd.read_excel(file, sheet_name=0) 
+
+                base_name = file.name.split(' - ')[-1].replace('.csv', '').replace('.xlsx', '').strip()
+                
+                df, error_msg = self._process_data_frame(df_raw)
+                
+                if error_msg or df is None:
+                    st.warning(f"Errore nel processare {file.name}: {error_msg}")
+                    continue
+
+                if 'Arbitri' in base_name or 'arbitri' in base_name:
+                    self.referees_data = df
+                    referee_loaded = True
+                else:
+                    self.teams_data[base_name] = df
+                    teams_loaded += 1
+                        
+            except Exception as e:
+                st.warning(f"Errore nel caricamento del file {file.name}: {str(e)}")
+                continue
+        
+        if teams_loaded == 0 and not referee_loaded:
+            return False, "Nessuna squadra o arbitro caricato correttamente."
+        
+        referee_status = "Arbitri caricati" if referee_loaded else "Arbitri NON caricati"
+        return True, f"Caricati dati per **{len(self.teams_data)}** squadre e {referee_status}"
+
+    def calculate_referee_factor(self, referee_name):
+        """Calcola il fattore di severità dell'arbitro."""
+        if self.referees_data.empty:
+            return 1.0, "Media", {}
+
+        # CERCA LA COLONNA NOME ARBITRO
+        ref_col = next((col for col in self.referees_data.columns if 'nome' in col.lower() or 'arbitro' in col.lower()), None)
+        
+        if ref_col is None:
+            # Se la colonna non è stata trovata, usa un default
+            return 1.0, "Media", {}
+
+        referee_row = self.referees_data[self.referees_data[ref_col] == referee_name]
+        
+        if referee_row.empty:
+            return 1.0, "Media", {}
+        
+        referee_row = referee_row.iloc[0]
+
+        yellow_per_match = pd.to_numeric(referee_row.get('Gialli a partita', 4.5), errors='coerce')
+        red_per_match = pd.to_numeric(referee_row.get('Rossi a partita', 0.2), errors='coerce')
+        fouls_per_match = pd.to_numeric(referee_row.get('Falli a partita', 25.0), errors='coerce')
+
+        if pd.isna(yellow_per_match): yellow_per_match = 4.5
+        if pd.isna(red_per_match): red_per_match = 0.2
+        if pd.isna(fouls_per_match): fouls_per_match = 25.0
+
+        severity_index = (
+            (yellow_per_match / 4.5) * 0.65 + 
+            (red_per_match / 0.2) * 0.20 + 
+            (fouls_per_match / 25.0) * 0.15
         )
 
-        # 3. Visualizzazione Risultati
-        st.subheader('3. Risultati e Top 4 Consigliati ✨')
-        
-        # Summary Card
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown(f"**{st.session_state['home_team']} vs {st.session_state['away_team']}** — Arbitro: **{ref_name}** ({ref_cat})", unsafe_allow_html=True)
-        c1, c2, c3 = st.columns([1,1,1])
-        c1.metric('Stima Totale Gialli', f"{est_total:.2f}")
-        c2.metric(f'Quota Rischio {st.session_state['home_team']}', f"{home_share_current*100:.1f}%")
-        c3.metric(f'Quota Rischio {st.session_state['away_team']}', f"{away_share_current*100:.1f}%")
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown('***')
-        
-        # Top 4 Consigliati (Filtro)
-        st.markdown('#### 🏆 Top 4 Giocatori con Rischio Più Alto')
-        st.markdown(prognosis_label, unsafe_allow_html=True) # Mostro la distribuzione scelta
-        st.caption('Usa il pulsante **❌ Escludi** per rimuovere un giocatore non titolare o non disponibile. L\'esclusione ricalcolerà la distribuzione Top 4.')
-
-        # Mostra la classifica e i pulsanti di esclusione
-        st.markdown('<div style="margin-top: 15px;"></div>', unsafe_allow_html=True)
-        if not top4_df.empty:
-            for index, row in top4_df.iterrows():
-                player = row['Player']
-                team = row['Team']
-                pos = row['Pos']
-                
-                # Player Row layout
-                with st.container():
-                    # Modifica qui: Rimossa la colonna 'col_prob' e la probabilità
-                    col_t, col_p, col_btn = st.columns([1, 3, 0.5])
-                    
-                    st.markdown('<div class="player-row-container">', unsafe_allow_html=True)
-                    
-                    with col_t:
-                        st.markdown(f'<span class="player-team-text">{team}</span>', unsafe_allow_html=True)
-                    with col_p:
-                        # Rimosso il display della probabilità
-                        st.markdown(f'<span class="player-info-text">{player} ({pos})</span>', unsafe_allow_html=True)
-                    with col_btn:
-                        # Pulsante di esclusione
-                        st.button('❌ Escludi', key=f'exclude_{player}_{index}', on_click=exclude_player, args=(player,), help='Rimuovi giocatore non titolare/disponibile', use_container_width=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
+        if severity_index > 1.3:
+            category = "Molto Alta"
+        elif severity_index > 1.15:
+            category = "Alta"
+        elif severity_index < 0.8:
+            category = "Bassa"
+        elif severity_index < 0.9:
+            category = "Media-Bassa"
         else:
-            st.info('Nessun giocatore con rischio rilevante trovato (o tutti sono stati esclusi).')
+            category = "Media"
 
-        st.markdown('***')
+        return max(0.6, min(1.8, severity_index)), category, {}
+
+
+    def calculate_enhanced_prediction(self, df_players, team_type, referee_factor, min_quota_perc):
+        """
+        Calcola la probabilità avanzata di cartellino giallo per ogni giocatore.
+        """
+        if df_players.empty:
+            return pd.DataFrame()
+
+        # 1. Calcolo Indici di Rischio (inverso dei rapporti)
+        df_players['Indice Rischio 90s'] = (1 / df_players['Media 90s per Cartellino Totale']).replace(np.inf, 0)
+        df_players['Indice Rischio Falli'] = (1 / df_players['Media Falli per Cartellino Totale']).replace(np.inf, 0)
+
+        # 2. Fattore Ritardo (Delay Factor)
+        delay_ratio = (df_players['Ritardo Cartellino (Partite)'] / self.MEDIA_ASSOLUTA_PARTITE_PER_GIALLO).clip(lower=0)
+        delay_factor = (1 + delay_ratio).clip(upper=2.0) 
+
+        # 3. Calcolo dell'Indice di Rischio Integrato
+        df_players['Rischio Integrato'] = (
+            (df_players['Indice Rischio 90s'] * 0.40) +
+            (df_players['Indice Rischio Falli'] * 0.40)
+        )
         
-        st.success('Analisi completata.')
+        # 4. Applico il Fattore Ritardo
+        df_players['Rischio Cartellino (Avanzato)'] = df_players['Rischio Integrato'] * delay_factor
 
+        # 5. Applicazione Fattore Arbitro
+        df_players['Rischio Finale'] = df_players['Rischio Cartellino (Avanzato)'] * referee_factor
+
+        # 6. Conversione in Quota (%)
+        max_risk = df_players['Rischio Finale'].max()
+        if max_risk > 0:
+            df_players['Rischio Scalato'] = (df_players['Rischio Finale'] / max_risk) * 100
+        else:
+             df_players['Rischio Scalato'] = 0
+
+        range_quota = self.QUOTA_MASSIMA - self.QUOTA_MINIMA
+        df_players['Quota (%)'] = self.QUOTA_MASSIMA - (df_players['Rischio Scalato'] / 100) * range_quota
+        df_players['Quota (%)'] = df_players['Quota (%)'].clip(lower=self.QUOTA_MINIMA, upper=self.QUOTA_MASSIMA)
+
+        df_players = df_players.sort_values(by='Rischio Finale', ascending=False)
+        
+        # Rinomina colonne per visualizzazione
+        df_players = df_players.rename(columns={
+            'Cartellini Gialli Totali': 'Gialli Tot.',
+            'Media 90s per Cartellino Totale': 'Media 90s/Giallo',
+            'Media Falli per Cartellino Totale': 'Media Falli/Giallo',
+            'Ritardo Cartellino (Partite)': 'Ritardo (Partite)' # Nome rinominato per l'output
+        })
+        
+        return df_players
+
+# --- FUNZIONE HELPER PER IL BILANCIAMENTO ---
+def get_balanced_top_4(df_ranked, home_team, away_team):
+    """
+    Seleziona i Top 4 giocatori garantendo un massimo di 3-1 di ripartizione tra le due squadre.
+    Seleziona sempre il giocatore con il rischio più alto tra quelli che non violano la regola.
+    """
+    df_top_4_list = []
+    home_count = 0
+    away_count = 0
+    
+    # Itera sulla classifica completa (già ordinata per Rischio Finale)
+    for index, row in df_ranked.iterrows():
+        if len(df_top_4_list) == 4:
+            break
+            
+        player_team = row['Squadra']
+        
+        # Logica di bilanciamento (Max 3 per squadra nel Top 4)
+        if player_team == home_team:
+            if home_count < 3:
+                df_top_4_list.append(row)
+                home_count += 1
+            # Se home_count è 3, ignora questo giocatore e cerca il prossimo che non viola la regola.
+        elif player_team == away_team:
+            if away_count < 3:
+                df_top_4_list.append(row)
+                away_count += 1
+            # Se away_count è 3, ignora questo giocatore e cerca il prossimo che non viola la regola.
+                
+    # Ritorna il DataFrame Top 4, riordinato per Rischio Finale
+    if not df_top_4_list:
+        return pd.DataFrame()
+        
+    return pd.DataFrame(df_top_4_list).sort_values(by='Rischio Finale', ascending=False)
+    
+# --- LOGICA APP STREAMLIT ---
+
+# La funzione exclude_player_callback non è più necessaria e il suo codice è stato integrato in run_app
+def run_app():
+    predictor = EnhancedMostroPredictor()
+    
+    # Inizializzazione Session State per persistenza dei dati e dello stato
+    if 'excluded_players' not in st.session_state:
+        st.session_state.excluded_players = []
+    if 'prediction_ran' not in st.session_state:
+        st.session_state.prediction_ran = False
+    if 'df_prediction' not in st.session_state:
+        st.session_state.df_prediction = pd.DataFrame()
+    if 'prediction_error' not in st.session_state: # Nuovo stato per gli errori
+        st.session_state.prediction_error = None
+    if 'last_home_team' not in st.session_state:
+        st.session_state.last_home_team = 'Seleziona Squadra'
+        st.session_state.last_away_team = 'Seleziona Squadra'
+        st.session_state.last_referee = 'Arbitro Non Caricato'
+
+    st.markdown('<div class="main-header">⚽ Il Mostro 5.0 - Predittore Cartellini Pro Enhanced</div>', unsafe_allow_html=True)
+
+    # --- Caricamento Dati ---
+    st.sidebar.header("📂 Caricamento Dati")
+    uploaded_files = st.sidebar.file_uploader(
+        "Carica file CSV/XLSX per Squadre e Arbitri (es. SQUADRA_A.csv, SQUADRA_B.csv, ARBITRI.csv)",
+        type=['csv', 'xlsx'],
+        accept_multiple_files=True
+    )
+    
+    # Tenta caricamento manuale
+    if uploaded_files:
+        success, message = predictor.load_csv_data(uploaded_files) 
+        st.sidebar.info(message)
+    
+    # Tenta caricamento automatico
+    if not predictor.teams_data:
+        success_auto, message_auto = predictor.auto_load_excel_data()
+        st.sidebar.info(message_auto)
+        
+    team_names = sorted(list(predictor.teams_data.keys()))
+    
+    referee_names = ['Arbitro Non Caricato']
+    referee_col = next((col for col in predictor.referees_data.columns if 'nome' in col.lower() or 'arbitro' in col.lower()), None)
+    
+    # Controlla ref_col prima di usarlo per filtrare i nomi
+    if not predictor.referees_data.empty and referee_col:
+        # Se la colonna esiste, usala per popolare il selectbox
+        referee_names = sorted(predictor.referees_data[referee_col].unique().tolist())
+    elif not predictor.referees_data.empty:
+        # Fallback se i dati arbitri sono caricati ma la colonna nome è incerta
+        if len(predictor.referees_data.columns) > 0:
+            referee_names = sorted(predictor.referees_data.iloc[:, 0].unique().tolist())
+        
+    # --- IMPOSTAZIONI PARTITA (HOME/AWAY/ARBITRO) ---
+    st.header("⚙️ Impostazioni Partita")
+    
+    col_home, col_away, col_ref = st.columns(3)
+    
+    with col_home:
+        selected_home = st.selectbox("Squadra di Casa 🏠", options=["Seleziona Squadra"] + team_names, key='home_team')
+    
+    with col_away:
+        options_away = [t for t in team_names if t != selected_home]
+        selected_away = st.selectbox("Squadra in Trasferta 🚌", options=["Seleziona Squadra"] + options_away, key='away_team')
+        
+    with col_ref:
+        selected_referee = st.selectbox("Arbitro 👨‍⚖️", options=referee_names, key='referee')
+
+    # --- LOGICA DI RESET E TASTO DI AVVIO ---
+    
+    # Logica di reset: se le selezioni principali sono cambiate, resetta lo stato
+    if selected_home != st.session_state.last_home_team or \
+       selected_away != st.session_state.last_away_team or \
+       selected_referee != st.session_state.last_referee:
+        
+        if selected_home != 'Seleziona Squadra' and selected_away != 'Seleziona Squadra':
+            st.session_state.prediction_ran = False
+            st.session_state.df_prediction = pd.DataFrame()
+            st.session_state.prediction_error = None
+            st.session_state.excluded_players = []
+            
+        st.session_state.last_home_team = selected_home
+        st.session_state.last_away_team = selected_away
+        st.session_state.last_referee = selected_referee
+
+
+    is_ready_to_run = selected_home != "Seleziona Squadra" and selected_away != "Seleziona Squadra" and selected_referee != "Arbitro Non Caricato" and selected_home != selected_away
+    
+    if is_ready_to_run:
+        st.markdown("---")
+        
+        # Pulsante che attiva il calcolo e aggiorna lo stato
+        if st.button("▶️ **Avvia Predizione e Calcolo Ritardo**", type="primary"):
+            
+            # 1. Preparazione e Calcolo
+            min_quota_perc = predictor.QUOTA_MINIMA 
+            ref_factor, ref_category, ref_stats = predictor.calculate_referee_factor(selected_referee)
+            
+            df_home = predictor.teams_data.get(selected_home, pd.DataFrame()).copy()
+            df_away = predictor.teams_data.get(selected_away, pd.DataFrame()).copy()
+            
+            df_home['Squadra'] = selected_home
+            df_away['Squadra'] = selected_away
+            df_all_players = pd.concat([df_home, df_away], ignore_index=True)
+            
+            # --- CHECK CRITICO DATI RITARDO ---
+            RITARDO_COL_NAME = 'Ritardo Cartellino (Partite)'
+            
+            # Assicurati che la colonna esista nel DF combinato PRIMA di calcolare
+            if RITARDO_COL_NAME not in df_all_players.columns:
+                st.session_state.prediction_ran = True 
+                st.session_state.df_prediction = pd.DataFrame() 
+                st.session_state.prediction_error = f"❌ **ERRORE DATI CRITICI RITARDO:** La colonna '{RITARDO_COL_NAME}' è **mancante** in almeno uno dei fogli squadra. Assicurati che il nome sia corretto (case-sensitive)."
+                st.rerun()
+                return
+                
+            # Assicurati che il dato non sia composto solo da zeri/NaN
+            ritardo_data = pd.to_numeric(df_all_players[RITARDO_COL_NAME], errors='coerce').fillna(0)
+            if ritardo_data.sum() == 0 and ritardo_data.count() > 0:
+                 st.session_state.prediction_ran = True 
+                 st.session_state.df_prediction = pd.DataFrame() 
+                 st.session_state.prediction_error = f"⚠️ **AVVISO DATI RITARDO:** La colonna '{RITARDO_COL_NAME}' è presente ma contiene solo valori zero. Il calcolo del Ritardo non sarà efficace."
+                 # Continua il calcolo ma avvisa
+
+            # 2. Esecuzione Calcolo Predizione
+            df_prediction_result = predictor.calculate_enhanced_prediction(df_all_players, 'Home', ref_factor, min_quota_perc)
+            
+            # Salva il risultato nel Session State
+            st.session_state.df_prediction = df_prediction_result
+            st.session_state.prediction_ran = True
+            st.session_state.ref_factor = ref_factor
+            st.session_state.ref_category = ref_category
+            
+            st.rerun()
+            
+        # Logica di visualizzazione dei risultati (attiva solo se la predizione è stata eseguita)
+        elif st.session_state.prediction_ran: 
+            
+            # Mostra l'errore o l'avviso se presente
+            if st.session_state.prediction_error:
+                st.error(st.session_state.prediction_error)
+                # Resetta l'errore dopo averlo mostrato per non bloccare l'app se è solo un AVVISO
+                if "AVVISO DATI RITARDO" in st.session_state.prediction_error:
+                    pass 
+                else:
+                    return # Blocchiamo se è un errore critico
+
+            # 0. Info Arbitro
+            st.header(f"🔮 Risultati Predizione: {st.session_state.last_home_team} vs {st.session_state.last_away_team}")
+            st.info(f"Fattore Severità Arbitro **{st.session_state.last_referee}**: **{st.session_state.ref_category}** (Fattore: {st.session_state.ref_factor:.2f})")
+            
+            # Recupera il df dal session state
+            df_prediction = st.session_state.df_prediction.copy()
+            
+            # 4. Applicazione Logica di Esclusione
+            if st.session_state.excluded_players:
+                df_prediction_filtered = df_prediction[~df_prediction['Player'].isin(st.session_state.excluded_players)]
+                exclusion_list = [f"**{p}**" for p in st.session_state.excluded_players]
+                st.warning(f"❌ Giocatori attualmente esclusi: {', '.join(exclusion_list)}.")
+            else:
+                df_prediction_filtered = df_prediction.copy()
+
+            # --- SEZIONE 1: TOP 4 PREDIZIONE RISCHIO CON BILANCIAMENTO ---
+            if not df_prediction_filtered.empty:
+                
+                # CHIAMATA ALLA FUNZIONE DI BILANCIAMENTO 
+                df_top_4 = get_balanced_top_4(
+                    df_prediction_filtered, 
+                    st.session_state.last_home_team, 
+                    st.session_state.last_away_team
+                )
+                
+                st.subheader("🚨 Top 4 Probabili Ammoniti per Partita (Max 3-1 Bilanciato)")
+                
+                # Calcola il bilanciamento finale
+                home_count_final = sum(1 for p in df_top_4['Squadra'] if p == st.session_state.last_home_team)
+                away_count_final = len(df_top_4) - home_count_final
+                st.caption(f"Bilanciamento Top 4: **{home_count_final}** per {st.session_state.last_home_team} vs **{away_count_final}** per {st.session_state.last_away_team}")
+                
+                cols = st.columns([0.5, 2.5, 1, 1.5, 1])
+                cols[0].markdown("**#**", unsafe_allow_html=True)
+                cols[1].markdown("**Giocatore (Squadra)**", unsafe_allow_html=True)
+                cols[2].markdown("**Pos**", unsafe_allow_html=True)
+                cols[3].markdown("**Quota (%)**", unsafe_allow_html=True)
+                cols[4].markdown("**Azione**", unsafe_allow_html=True)
+                st.markdown("---")
+                
+                for i, (index, row) in enumerate(df_top_4.iterrows()):
+                    player_name = row['Player']
+                    
+                    col_i = st.columns([0.5, 2.5, 1, 1.5, 1])
+                    
+                    col_i[0].write(i + 1)
+                    col_i[1].markdown(f"**{player_name}** ({row['Squadra']})")
+                    col_i[2].write(row['Pos'])
+                    
+                    quota_text = f"**{row['Quota (%)']:.2f}**"
+                    if row['Quota (%)'] < 20:
+                        col_i[3].markdown(f'<div style="color: #c0392b; font-weight: bold;">{quota_text}</div>', unsafe_allow_html=True)
+                    elif row['Quota (%)'] < 25:
+                        col_i[3].markdown(f'<div style="color: #f39c12; font-weight: bold;">{quota_text}</div>', unsafe_allow_html=True)
+                    else:
+                        col_i[3].markdown(quota_text, unsafe_allow_html=True)
+                        
+                    with col_i[4]:
+                        if st.button(
+                            "❌ Escludi", 
+                            key=f'exclude_{player_name}_{i}'
+                        ):
+                            if player_name in st.session_state.excluded_players:
+                                st.session_state.excluded_players.remove(player_name)
+                            else:
+                                st.session_state.excluded_players.append(player_name)
+                            
+                            st.rerun()
+                    
+                st.markdown("---")
+
+                # --- SEZIONE 2: CLASSIFICA RITARDO CARTELLINO ---
+                st.subheader("⏰ Classifica Ritardo Cartellino (Giocatori 'in debito')")
+                
+                # Filtra e mostra i top 10 con ritardo positivo (utilizzando il DF salvato)
+                df_delay = df_prediction[df_prediction['Ritardo (Partite)'] > 0].copy()
+                df_delay = df_delay.sort_values(by='Ritardo (Partite)', ascending=False).head(10)
+                
+                if not df_delay.empty:
+                    st.dataframe(
+                        df_delay[['Player', 'Squadra', 'Pos', 'Ritardo (Partite)', 'Gialli Tot.']].style.format({
+                            'Ritardo (Partite)': "{:.2f}"
+                        }), 
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    st.caption("Il **Ritardo** indica di quante partite il giocatore è 'in debito' rispetto alla media campionato. Maggiore è il valore, maggiore è la probabilità statistica di prendere un cartellino.")
+                else:
+                    st.info("Nessun giocatore ha un ritardo positivo di cartellino in questa partita.")
+                
+                st.markdown("---")
+                
+                # --- SEZIONE 3: CLASSIFICA COMPLETA ---
+                st.subheader("Classifica Completa Rischio Cartellini (Tutti i Giocatori)")
+                
+                display_cols = ['Player', 'Squadra', 'Pos', 'Quota (%)', 'Rischio Finale', 'Media 90s/Giallo', 'Media Falli/Giallo', 'Ritardo (Partite)', 'Gialli Tot.']
+                
+                display_df = df_prediction[display_cols].copy().rename(columns={
+                    'Rischio Finale': 'Rischio'
+                })
+                
+                display_df.insert(0, 'Escluso', display_df['Player'].apply(lambda x: '❌' if x in st.session_state.excluded_players else ''))
+
+                st.dataframe(
+                    display_df.style.format({
+                        'Quota (%)': "{:.2f}", 
+                        'Rischio': "{:.3f}", 
+                        'Media 90s/Giallo': "{:.2f}",
+                        'Media Falli/Giallo': "{:.2f}",
+                        'Ritardo (Partite)': "{:.2f}"
+                    }), 
+                    use_container_width=True,
+                    hide_index=True
+                )
+            
+            else:
+                st.warning("Nessun giocatore rientra nei criteri di Quota Minima o la classifica è vuota.")
+            
     else:
-        st.info('Premi "CALCOLA PRONOSTICO AI 🚀" per iniziare l\'analisi.')
+        st.info("Seleziona la squadra di casa, quella in trasferta e l'arbitro (e assicurati che le squadre siano diverse) e premi il tasto Avvia Predizione.")
 
 
 if __name__ == '__main__':
-    main()
+    run_app()
